@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import joblib
 import pandas as pd
+import requests
 import streamlit as st
 
 from src.data.collector import INTERVAL_MS, fetch_klines
@@ -25,8 +26,24 @@ from src.utils.config import ROOT, load_config
 st.set_page_config(page_title="BNB AI Trading Bot", layout="wide")
 cfg = load_config()
 REFRESH_S = 60
+TICK_S = 2  # live price ticker refresh (24hr ticker endpoint, weight ~2)
 LOOKBACK = 500  # candles; ≈8h at 1m, ≈5d at 15m (covers EMA200 warmup)
 MODEL_BY_INTERVAL = {"1m": "model_1m.pkl"}  # intervals not listed use the default model
+
+
+@st.fragment(run_every=TICK_S)
+def price_ticker() -> None:
+    """Ticking live price — independent of the heavy 60s chart refresh."""
+    try:
+        r = requests.get("https://api.binance.com/api/v3/ticker/24hr",
+                         params={"symbol": cfg["symbol"]}, timeout=5)
+        r.raise_for_status()
+        t = r.json()
+        price, chg = float(t["lastPrice"]), float(t["priceChangePercent"])
+        st.markdown(f"## {cfg['symbol']}  ${price:,.2f}  "
+                    f"({chg:+.2f}% 24h)  🟢 LIVE")
+    except Exception as exc:
+        st.markdown(f"## {cfg['symbol']}  🔴 price feed unavailable ({exc})")
 
 
 @st.cache_resource
@@ -58,6 +75,7 @@ def with_predictions(df: pd.DataFrame, bundle) -> pd.DataFrame:
 
 
 st.title("BNB AI Trading Bot")
+price_ticker()  # ticks every 2s; charts below refresh every 60s
 mode = st.sidebar.radio("Data source", ["Live (Binance)", "Cached CSV"], index=0)
 interval = st.sidebar.selectbox("Interval", ["1m", "5m", "15m", "1h"],
                                 index=["1m", "5m", "15m", "1h"].index(cfg["interval"]))
