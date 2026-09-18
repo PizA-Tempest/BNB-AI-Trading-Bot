@@ -19,6 +19,8 @@ from sklearn.dummy import DummyClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import f1_score, precision_score
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
 
 from src.data.preprocessing import clean
 from src.features.indicators import FEATURE_COLS, add_all, make_target
@@ -34,7 +36,8 @@ def chrono_split(df: pd.DataFrame, train=0.6, val=0.2):
 def candidates():
     models = {
         "baseline": DummyClassifier(strategy="most_frequent"),
-        "logreg": LogisticRegression(max_iter=2000),
+        "logreg": make_pipeline(StandardScaler(),
+                                LogisticRegression(max_iter=2000)),
         "random_forest": RandomForestClassifier(n_estimators=300, min_samples_leaf=5,
                                                 n_jobs=-1, random_state=42),
     }
