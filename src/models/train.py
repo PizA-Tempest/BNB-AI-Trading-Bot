@@ -63,6 +63,8 @@ def main() -> None:
     cfg = load_config()
     p = argparse.ArgumentParser()
     p.add_argument("--csv", default="data/processed/BNBUSDT_15m.csv")
+    p.add_argument("--model-file", default=None, help="Override cfg model filename (e.g. model_1m.pkl)")
+    p.add_argument("--metrics-file", default=None)
     a = p.parse_args()
 
     raw = pd.read_csv(a.csv)
@@ -104,14 +106,16 @@ def main() -> None:
     gate = sweep_thresholds(y_va.values, val_proba)
     out_dir = ROOT / cfg["model"]["dir"]
     out_dir.mkdir(parents=True, exist_ok=True)
+    model_file = a.model_file or cfg["model"]["file"]
+    metrics_file = a.metrics_file or cfg["model"]["metrics_file"]
     joblib.dump({"model": fitted[best], "features": FEATURE_COLS, "name": best,
-                 "calibrated": True},
-                out_dir / cfg["model"]["file"])
-    (out_dir / cfg["model"]["metrics_file"]).write_text(json.dumps(
+                 "calibrated": True, "csv": a.csv},
+                out_dir / model_file)
+    (out_dir / metrics_file).write_text(json.dumps(
         {"best": best, "calibrated": True, "results": results,
          "gate_sweep_validation": gate,
          "split": {"train": len(tr), "val": len(va), "test": len(te)}}, indent=2))
-    print(f"saved best={best} (Platt-calibrated) -> {out_dir / cfg['model']['file']}")
+    print(f"saved best={best} (Platt-calibrated) -> {out_dir / model_file}")
     for row in gate["rows"]:
         print(f"gate {row['threshold']:.2f}: {row['signals']} signals, precision={row['signal_precision']:.3f}")
     print(f"suggested gate: {gate['suggested_threshold']}")

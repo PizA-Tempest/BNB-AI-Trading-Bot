@@ -81,12 +81,15 @@ def main() -> None:
                    help="Override signal gate (default: CONFIDENCE_THRESHOLD). "
                         "Use the trainer's suggested gate for evaluation; "
                         "live/paper gating still uses config.")
+    p.add_argument("--model", default=None, help="Override model file (e.g. model_1m.pkl)")
+    p.add_argument("--results-out", default="latest.json", help="Results filename")
     a = p.parse_args()
     thr = a.threshold if a.threshold is not None else cfg["confidence_threshold"]
 
     df = add_all(clean(pd.read_csv(a.csv)), cfg).dropna().reset_index(drop=True)
     te = df.iloc[int(len(df) * 0.8):].reset_index(drop=True)  # out-of-sample tail
-    bundle = joblib.load(ROOT / cfg["model"]["dir"] / cfg["model"]["file"])
+    model_file = a.model or cfg["model"]["file"]
+    bundle = joblib.load(ROOT / cfg["model"]["dir"] / model_file)
     proba = bundle["model"].predict_proba(te[bundle["features"]])[:, 1]
 
     equity, trades, signals = run(te, proba, cfg, thr)
@@ -106,7 +109,7 @@ def main() -> None:
         "net_return": float(equity.iloc[-1] / equity.iloc[0] - 1) if len(equity) else 0.0,
         "fees_included": True, "slippage_included": True,
     }
-    out = ROOT / "backtests" / "results" / "latest.json"
+    out = ROOT / "backtests" / "results" / a.results_out
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, indent=2))
     print("==================================\n       BNB BACKTEST REPORT\n==================================")

@@ -19,7 +19,7 @@ import requests
 
 BASE_URL = "https://api.binance.com/api/v3/klines"
 INTERVAL_MS = {
-    "5m": 5 * 60_000, "15m": 15 * 60_000, "1h": 60 * 60_000,
+    "1m": 60_000, "5m": 5 * 60_000, "15m": 15 * 60_000, "1h": 60 * 60_000,
     "4h": 4 * 60 * 60_000, "1d": 24 * 60 * 60_000,
 }
 
@@ -59,7 +59,7 @@ def collect(symbol: str, interval: str, days: int, out: Path) -> pd.DataFrame:
 
 def synthetic(symbol: str, interval: str, days: int, out: Path, seed: int = 42) -> pd.DataFrame:
     rng = np.random.default_rng(seed)
-    step_min = {"5m": 5, "15m": 15, "1h": 60, "4h": 240, "1d": 1440}[interval]
+    step_min = {"1m": 1, "5m": 5, "15m": 15, "1h": 60, "4h": 240, "1d": 1440}[interval]
     n = max(days * 24 * 60 // step_min, 500)
     rets = rng.normal(0.0002, 0.008, n)
     close = 650 * np.exp(np.cumsum(rets))
