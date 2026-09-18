@@ -7,7 +7,7 @@ requests>=2.31
 streamlit>=1.32
 fastapi>=0.109
 uvicorn>=0.25
-# Optional but recommended (install if your Python supports them):
-# xgboost>=2.0
-# lightgbm>=4.0
+xgboost>=2.0
+lightgbm>=4.0
+# Optional (only needed for live trading):
 # python-binance>=1.0
