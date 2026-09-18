@@ -1,0 +1,14 @@
+services:
+  bot:
+    build: .
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./backtests/results:/app/backtests/results
+    command: python src/trading/paper_trader.py
+  dashboard:
+    build: .
+    ports:
+      - "8501:8501"
+    command: streamlit run dashboard/app.py --server.address 0.0.0.0

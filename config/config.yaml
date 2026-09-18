@@ -1,0 +1,50 @@
+symbol: BNBUSDT
+interval: 15m
+confidence_threshold: 0.95
+
+data:
+  raw_dir: data/raw
+  processed_dir: data/processed
+  features_dir: data/features
+  lookback_days: 730
+
+features:
+  ema_fast: 20
+  ema_mid: 50
+  ema_slow: 200
+  rsi_period: 14
+  macd_fast: 12
+  macd_slow: 26
+  macd_signal: 9
+  bb_period: 20
+  bb_std: 2.0
+  atr_period: 14
+  roc_period: 12
+  momentum_period: 10
+  volatility_window: 20
+  target_horizon: 3        # candles ahead for label
+  target_threshold: 0.002  # +0.2% future return => class 1
+
+model:
+  dir: models/trained
+  file: model.pkl
+  metrics_file: metrics.json
+
+risk:
+  max_risk_per_trade: 0.01
+  max_daily_loss: 0.03
+  max_drawdown: 0.15
+  max_open_positions: 3
+  stop_loss_pct: 0.02
+  take_profit_pct: 0.04
+  cooldown_bars: 3
+  starting_balance: 1000.0
+
+backtest:
+  fee_pct: 0.001   # 0.1% per side (Binance spot default w/o BNB discount)
+  slippage_pct: 0.0005
+  out_of_sample: true
+
+trading:
+  mode: paper  # paper | live
+  poll_seconds: 60
