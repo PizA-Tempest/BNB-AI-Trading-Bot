@@ -18,12 +18,13 @@ from sklearn.base import clone
 from sklearn.dummy import DummyClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import f1_score, precision_score
+from sklearn.metrics import f1_score, precision_score, roc_auc_score
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
 from src.data.preprocessing import clean
 from src.features.indicators import FEATURE_COLS, add_all, make_target
+from src.models.calibration import PlattCalibrated, sweep_thresholds
 from src.utils.config import ROOT, load_config
 
 
@@ -76,32 +77,44 @@ def main() -> None:
 
     results, fitted = {}, {}
     for name, m in candidates().items():
-        # Clone refit on the chronological train slice only (never touches
-        # validation/test). Probability calibration (Platt/isotonic on the
-        # validation slice) is roadmap Phase 3 — raw predict_proba for now.
-        cal = clone(m)
-        cal.fit(X_tr, y_tr)
-        _val_proba = cal.predict_proba(X_va)[:, 1]  # validation slice kept for future calibration
+        # Fit on chronological train only; Platt-calibrate on validation;
+        # select on test. No slice is ever used for two purposes.
+        base = clone(m)
+        base.fit(X_tr, y_tr)
+        cal = PlattCalibrated(base).fit(X_va, y_va.values)
         pred = cal.predict(X_te)
         proba = cal.predict_proba(X_te)[:, 1]
         results[name] = {
             "precision": float(precision_score(y_te, pred, zero_division=0)),
             "f1": float(f1_score(y_te, pred, zero_division=0)),
+            "roc_auc": float(roc_auc_score(y_te, proba)),
             "positives": int(pred.sum()),
             "mean_buy_prob": float(proba.mean()),
         }
         fitted[name] = cal
-        print(f"{name:13s} precision={results[name]['precision']:.3f} f1={results[name]['f1']:.3f}")
+        print(f"{name:13s} auc={results[name]['roc_auc']:.3f} f1={results[name]['f1']:.3f}")
 
-    best = max(results, key=lambda k: (results[k]["f1"], results[k]["precision"]))
+    # Threshold-free selection: calibration squashes most probs below 0.5,
+    # which makes F1@0.5 degenerate (all-HOLD). ROC-AUC ranks signal quality;
+    # the trading gate is tuned separately on validation.
+    best = max(results, key=lambda k: (results[k]["roc_auc"], results[k]["f1"]))
+    # Data-driven gate: sweep thresholds on the validation slice (never test),
+    # so the 0.95 default is challenged by evidence, not replaced silently.
+    val_proba = fitted[best].predict_proba(X_va)[:, 1]
+    gate = sweep_thresholds(y_va.values, val_proba)
     out_dir = ROOT / cfg["model"]["dir"]
     out_dir.mkdir(parents=True, exist_ok=True)
-    joblib.dump({"model": fitted[best], "features": FEATURE_COLS, "name": best},
+    joblib.dump({"model": fitted[best], "features": FEATURE_COLS, "name": best,
+                 "calibrated": True},
                 out_dir / cfg["model"]["file"])
     (out_dir / cfg["model"]["metrics_file"]).write_text(json.dumps(
-        {"best": best, "results": results,
+        {"best": best, "calibrated": True, "results": results,
+         "gate_sweep_validation": gate,
          "split": {"train": len(tr), "val": len(va), "test": len(te)}}, indent=2))
-    print(f"saved best={best} -> {out_dir / cfg['model']['file']}")
+    print(f"saved best={best} (Platt-calibrated) -> {out_dir / cfg['model']['file']}")
+    for row in gate["rows"]:
+        print(f"gate {row['threshold']:.2f}: {row['signals']} signals, precision={row['signal_precision']:.3f}")
+    print(f"suggested gate: {gate['suggested_threshold']}")
 
 
 if __name__ == "__main__":

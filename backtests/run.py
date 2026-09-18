@@ -31,8 +31,8 @@ def sharpe(returns: pd.Series) -> float:
     return float(returns.mean() / returns.std() * np.sqrt(365 * 96)) if returns.std() else 0.0
 
 
-def run(df: pd.DataFrame, proba: np.ndarray, cfg: dict):
-    thr = cfg["confidence_threshold"]
+def run(df: pd.DataFrame, proba: np.ndarray, cfg: dict, threshold: float | None = None):
+    thr = cfg["confidence_threshold"] if threshold is None else threshold
     fee, slip = cfg["backtest"]["fee_pct"], cfg["backtest"]["slippage_pct"]
     risk = RiskManager.from_config(cfg)
     bal, pos, entry = risk.balance, None, 0.0
@@ -77,21 +77,27 @@ def main() -> None:
     cfg = load_config()
     p = argparse.ArgumentParser()
     p.add_argument("--csv", default="data/processed/BNBUSDT_15m.csv")
+    p.add_argument("--threshold", type=float, default=None,
+                   help="Override signal gate (default: CONFIDENCE_THRESHOLD). "
+                        "Use the trainer's suggested gate for evaluation; "
+                        "live/paper gating still uses config.")
     a = p.parse_args()
+    thr = a.threshold if a.threshold is not None else cfg["confidence_threshold"]
 
     df = add_all(clean(pd.read_csv(a.csv)), cfg).dropna().reset_index(drop=True)
     te = df.iloc[int(len(df) * 0.8):].reset_index(drop=True)  # out-of-sample tail
     bundle = joblib.load(ROOT / cfg["model"]["dir"] / cfg["model"]["file"])
     proba = bundle["model"].predict_proba(te[bundle["features"]])[:, 1]
 
-    equity, trades, signals = run(te, proba, cfg)
+    equity, trades, signals = run(te, proba, cfg, thr)
     wins = [t for t in trades if t["pnl"] > 0]
     gross_w = sum(t["pnl"] for t in wins)
     gross_l = -sum(t["pnl"] for t in trades if t["pnl"] <= 0) or 1e-9
     rets = equity.pct_change().fillna(0)
     report = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "model": bundle["name"], "out_of_sample": cfg["backtest"]["out_of_sample"],
+        "model": bundle["name"], "threshold": thr,
+        "out_of_sample": cfg["backtest"]["out_of_sample"],
         "bars": len(te), "signals": int((signals != HOLD).sum()), "trades": len(trades),
         "win_rate": float(len(wins) / len(trades)) if trades else 0.0,
         "profit_factor": float(gross_w / gross_l),
